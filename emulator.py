@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 from collections import deque
 
+
 class FileSystemNode:
     def __init__(self, name, is_dir=False, owner='root'):
         self.name = name
@@ -16,8 +17,14 @@ class FileSystemNode:
     def __repr__(self):
         return f"{'DIR' if self.is_dir else 'FILE'}: {self.name}, Owner: {self.owner}"
 
+
 class Emulator:
-    def __init__(self, config_path='config.yaml'):
+    def __init__(self, config_path='config.yaml', debug=False):
+        self.debug = debug  # Устанавливаем флаг отладки
+        if self.debug:
+            print(f"Текущая рабочая директория: {os.getcwd()}")
+            print(f"Список файлов и папок в рабочей директории: {os.listdir('.')}")
+
         self.load_config(config_path)
         self.load_virtual_fs()
         self.current_path = deque(['/'])
@@ -26,7 +33,7 @@ class Emulator:
 
     def load_config(self, config_path):
         try:
-            with open(config_path, 'r') as file:
+            with open(config_path, 'r', encoding='utf-8') as file:
                 self.config = yaml.safe_load(file)
             if 'virtual_fs_path' not in self.config or 'log_file_path' not in self.config:
                 raise KeyError("Конфигурационный файл должен содержать 'virtual_fs_path' и 'log_file_path'.")
@@ -42,7 +49,7 @@ class Emulator:
 
     def load_virtual_fs(self):
         self.root = FileSystemNode('/', is_dir=True)
-        tar_path = self.config['virtual_fs_path']
+        tar_path = os.path.abspath(self.config['virtual_fs_path']).replace('\\', '/')
         if not os.path.isfile(tar_path):
             print(f"Архив виртуальной файловой системы '{tar_path}' не найден.")
             sys.exit(1)
@@ -51,7 +58,7 @@ class Emulator:
                 for member in tar.getmembers():
                     if member.name == 'virtual_fs' or not member.name.startswith('virtual_fs/'):
                         continue  # Пропускаем корневую папку
-                    path = member.name.replace('virtual_fs/', '', 1)
+                    path = member.name.replace('virtual_fs/', '', 1).replace('\\', '/')
                     is_dir = member.isdir()
                     self.create_path(path, is_dir)
         except tarfile.TarError as e:
@@ -59,7 +66,7 @@ class Emulator:
             sys.exit(1)
 
     def create_path(self, path, is_dir):
-        path = path.replace('\\', '/')  # Заменяем обратные слеши на прямые
+        path = path.replace('\\', '/')
         parts = path.strip('/').split('/')
         current = self.root
         for part in parts[:-1]:
@@ -71,6 +78,8 @@ class Emulator:
             current.children[last_part] = FileSystemNode(last_part, is_dir=is_dir)
 
     def log_action(self, command, args):
+        if self.debug:
+            print(f"[DEBUG] Logging action: {command} {args}")
         action = {
             'timestamp': datetime.now().isoformat(),
             'command': command,
@@ -79,7 +88,7 @@ class Emulator:
         log_data = {}
         if os.path.isfile(self.log_file_path):
             try:
-                with open(self.log_file_path, 'r') as file:
+                with open(self.log_file_path, 'r', encoding='utf-8') as file:
                     log_data = json.load(file)
             except json.JSONDecodeError:
                 log_data = {'actions': []}
@@ -87,7 +96,7 @@ class Emulator:
             log_data = {'actions': []}
         log_data['actions'].append(action)
         try:
-            with open(self.log_file_path, 'w') as file:
+            with open(self.log_file_path, 'w', encoding='utf-8') as file:
                 json.dump(log_data, file, indent=4, ensure_ascii=False)
         except IOError as e:
             print(f"Ошибка записи в лог-файл: {e}")
@@ -108,13 +117,13 @@ class Emulator:
                     continue
                 self.log_action(command, args)
                 if command == 'ls':
-                    self.ls(args)
+                    self.ls(args, log=False)  # Отключаем двойное логирование
                 elif command == 'cd':
-                    self.cd(args)
+                    self.cd(args, log=False)
                 elif command == 'exit':
                     self.exit()
                 elif command == 'chown':
-                    self.chown(args)
+                    self.chown(args, log=False)
                 elif command == 'date':
                     self.date()
                 elif command == 'uptime':
@@ -129,21 +138,25 @@ class Emulator:
     def get_prompt(self):
         return ''.join(self.current_path) + '$ '
 
-    def ls(self, args):
+    def ls(self, args, log=True):
+        if log:
+            self.log_action('ls', args)
+
         target_path = self.get_target_path(args)
         node = self.get_node(target_path)
         if node is None:
             print(f'ls: невозможно получить доступ к "{target_path}": Нет такого файла или каталога')
             return
         if not node.is_dir:
-            print(f"{node.name}    {node.owner}")
+            print(node.name)
             return
-        for name in sorted(node.children.keys()):
-            child = node.children[name]
-            owner = child.owner
-            print(f"{child.name}    {owner}")
+        for name, child in sorted(node.children.items()):
+            print(f"{name}    {child.owner}")
 
-    def cd(self, args):
+    def cd(self, args, log=True):
+        if log:
+            self.log_action('cd', args)
+
         if not args:
             self.current_path = deque(['/'])
             return
@@ -159,19 +172,18 @@ class Emulator:
             new_path = self.resolve_path(target)
             node = self.get_node(new_path)
             if node and node.is_dir:
-                self.current_path = deque(new_path.strip('/').split('/'))
-                if not self.current_path:
+                parts = new_path.strip('/').split('/')
+                if new_path == '/':
                     self.current_path = deque(['/'])
                 else:
-                    self.current_path.appendleft('/')
+                    self.current_path = deque(['/'] + parts)
             else:
                 print(f'cd: невозможен переход в "{target}": Нет такого каталога')
 
-    def exit(self):
-        print('Выход из эмулятора.')
-        sys.exit(0)
+    def chown(self, args, log=True):
+        if log:
+            self.log_action('chown', args)
 
-    def chown(self, args):
         if len(args) != 2:
             print('Использование: chown <новый_владелец> <путь>')
             return
@@ -183,20 +195,6 @@ class Emulator:
             print(f'Владелец "{path}" изменен на "{new_owner}".')
         else:
             print(f'chown: невозможно изменить владельца "{path}": Нет такого файла или каталога')
-
-    def get_node(self, path):
-        if path == '/':
-            return self.root
-        parts = path.strip('/').split('/')
-        current = self.root
-        for part in parts:
-            if not current.is_dir:
-                return None
-            if part in current.children:
-                current = current.children[part]
-            else:
-                return None
-        return current
 
     def date(self):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -220,17 +218,24 @@ class Emulator:
             return self.get_current_path()
         path = args[0]
         if path.startswith('/'):
-            return path
-        else:
-            return os.path.join(self.get_current_path(), path).replace('//', '/')
-
-    def resolve_path(self, path):
-        if path.startswith('/'):
             return path.replace('\\', '/')
         else:
+            return f"{self.get_current_path().rstrip('/')}/{path.lstrip('/')}".replace('\\', '/').replace('//', '/')
+
+    def resolve_path(self, path):
+        # Заменяем все обратные слеши на прямые
+        path = path.replace('\\', '/')
+
+        if path.startswith('/'):
+            return path
+        else:
             current = self.get_current_path()
-            resolved = '/'.join([current.rstrip('/'), path.lstrip('/')])
-            return resolved.replace('//', '/').replace('\\', '/')
+            # Собираем путь с использованием прямых слешей
+            if current == '/':
+                resolved = f"/{path}"
+            else:
+                resolved = f"{current}/{path}"
+            return resolved.replace('//', '/')
 
     def get_current_path(self):
         if len(self.current_path) == 1 and self.current_path[0] == '/':
@@ -239,21 +244,37 @@ class Emulator:
             return '/' + '/'.join(list(self.current_path)[1:])
 
     def get_node(self, path):
+        # Заменяем все обратные слеши на прямые
         path = path.replace('\\', '/')
+
+        if self.debug:
+            print(f"[DEBUG] Get node for path '{path}'")
         if path == '/':
             return self.root
         parts = path.strip('/').split('/')
         current = self.root
         for part in parts:
             if not current.is_dir:
+                if self.debug:
+                    print(f"[DEBUG] '{current.name}' is not a directory.")
                 return None
             if part in current.children:
                 current = current.children[part]
             else:
+                if self.debug:
+                    print(f"[DEBUG] '{part}' not found in '{current.name}'.")
                 return None
+        if self.debug:
+            print(f"[DEBUG] Found node: {current}")
         return current
 
 
 if __name__ == '__main__':
-    emulator = Emulator()
+    # Опционально: можно передать путь к config.yaml как аргумент
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+    else:
+        config_path = 'config.yaml'
+    # По умолчанию debug=False
+    emulator = Emulator(config_path=config_path, debug=False)
     emulator.run()
