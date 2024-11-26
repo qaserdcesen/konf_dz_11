@@ -1,0 +1,2 @@
+virtual_fs_path: 'virtual_fs.tar'
+log_file_path: 'logs.json'

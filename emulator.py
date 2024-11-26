@@ -59,6 +59,7 @@ class Emulator:
             sys.exit(1)
 
     def create_path(self, path, is_dir):
+        path = path.replace('\\', '/')  # Заменяем обратные слеши на прямые
         parts = path.strip('/').split('/')
         current = self.root
         for part in parts[:-1]:
@@ -135,10 +136,12 @@ class Emulator:
             print(f'ls: невозможно получить доступ к "{target_path}": Нет такого файла или каталога')
             return
         if not node.is_dir:
-            print(node.name)
+            print(f"{node.name}    {node.owner}")
             return
         for name in sorted(node.children.keys()):
-            print(name)
+            child = node.children[name]
+            owner = child.owner
+            print(f"{child.name}    {owner}")
 
     def cd(self, args):
         if not args:
@@ -181,6 +184,20 @@ class Emulator:
         else:
             print(f'chown: невозможно изменить владельца "{path}": Нет такого файла или каталога')
 
+    def get_node(self, path):
+        if path == '/':
+            return self.root
+        parts = path.strip('/').split('/')
+        current = self.root
+        for part in parts:
+            if not current.is_dir:
+                return None
+            if part in current.children:
+                current = current.children[part]
+            else:
+                return None
+        return current
+
     def date(self):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         print(now)
@@ -209,10 +226,11 @@ class Emulator:
 
     def resolve_path(self, path):
         if path.startswith('/'):
-            return path
+            return path.replace('\\', '/')
         else:
             current = self.get_current_path()
-            return os.path.join(current, path).replace('//', '/')
+            resolved = '/'.join([current.rstrip('/'), path.lstrip('/')])
+            return resolved.replace('//', '/').replace('\\', '/')
 
     def get_current_path(self):
         if len(self.current_path) == 1 and self.current_path[0] == '/':
@@ -221,6 +239,7 @@ class Emulator:
             return '/' + '/'.join(list(self.current_path)[1:])
 
     def get_node(self, path):
+        path = path.replace('\\', '/')
         if path == '/':
             return self.root
         parts = path.strip('/').split('/')
@@ -233,6 +252,7 @@ class Emulator:
             else:
                 return None
         return current
+
 
 if __name__ == '__main__':
     emulator = Emulator()
