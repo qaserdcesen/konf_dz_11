@@ -107,10 +107,10 @@ def cd(directory, current_path):
 #### Команда exit
 
 ```python
-def exit_shell(log_path):
-    log_action('Exited shell', log_path)
-    print("Exiting...")
-    exit()
+    def exit(self):
+        self.log_action('exit', [])
+        print("Exiting...")
+        sys.exit(0)
 ```
 Описание: Завершает сеанс работы эмулятора.
 
@@ -170,11 +170,23 @@ log_file_path: "log.json"
 ## 4. Примеры использования
 
 ### Использование команды ls
+![image](https://github.com/user-attachments/assets/bd7b2be1-934d-4e3a-b473-2bb86b459143)
+
 ### Использование команды cd
+![image](https://github.com/user-attachments/assets/dd45f77f-1064-477a-b3ad-8855ed71a217)
+
 ### Использование команды chown
+![image](https://github.com/user-attachments/assets/3409aa8d-dcce-4d0e-828d-3626c1e0ce8f)
+
 ### Использование команды date
+![image](https://github.com/user-attachments/assets/4c474a85-a65c-45d9-8926-9d8c63c7c8b5)
+
 ### Использование команды uptime
+![image](https://github.com/user-attachments/assets/de26261b-11d0-4fad-9863-09856a3e5d0a)
+
 ### Использование команды exit
+![image](https://github.com/user-attachments/assets/ad663e42-5023-41ec-ae37-aef48c68ea96)
+
 
 
 ---
