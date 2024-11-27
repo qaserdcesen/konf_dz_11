@@ -169,6 +169,12 @@ log_file_path: "log.json"
 
 ## 4. Примеры использования
 
+### Запуск эмулятора:
+
+```python
+python emulator.py
+```
+
 ### Использование команды ls
 ![image](https://github.com/user-attachments/assets/bd7b2be1-934d-4e3a-b473-2bb86b459143)
 
