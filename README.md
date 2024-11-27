@@ -199,6 +199,9 @@ log_file_path: "log.json"
 python -m unittest discover -s tests
 ```
 
+![image](https://github.com/user-attachments/assets/93dc267b-11eb-406e-a633-f346e1d69817)
+
+
 Покрытие тестов:
 
 - `test_ls`: Проверяет корректность вывода команды `ls`.
