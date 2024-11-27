@@ -222,6 +222,11 @@ class Emulator:
         else:
             return f"{self.get_current_path().rstrip('/')}/{path.lstrip('/')}".replace('\\', '/').replace('//', '/')
 
+    def exit(self):
+        self.log_action('exit', [])
+        print("Exiting...")
+        sys.exit(0)
+
     def resolve_path(self, path):
         # Заменяем все обратные слеши на прямые
         path = path.replace('\\', '/')
