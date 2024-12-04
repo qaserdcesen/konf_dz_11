@@ -34,44 +34,90 @@
 #### Загрузка конфигурации
 
 ```python
-def load_config():
-    with open('config.yaml', 'r') as file:
-        return yaml.safe_load(file)
+    def load_config(self, config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as file:
+                self.config = yaml.safe_load(file)
+            if 'virtual_fs_path' not in self.config or 'log_file_path' not in self.config:
+                raise KeyError("Конфигурационный файл должен содержать 'virtual_fs_path' и 'log_file_path'.")
+        except FileNotFoundError:
+            print(f"Конфигурационный файл '{config_path}' не найден.")
+            sys.exit(1)
+        except yaml.YAMLError as e:
+            print(f"Ошибка парсинга YAML: {e}")
+            sys.exit(1)
+        except KeyError as e:
+            print(f"Ошибка конфигурации: {e}")
+            sys.exit(1)
 ```
 Описание: Загружает настройки из файла config.yaml, включая пути к виртуальной файловой системе и лог-файлу.
 
 #### Логирование действий
 
 ```python
-def log_action(action, log_path):
-    timestamp = datetime.datetime.now().isoformat()
-    log_entry = {"timestamp": timestamp, "action": action}
-
-    if os.path.exists(log_path):
-        with open(log_path, 'r') as logfile:
+    def log_action(self, command, args):
+        if self.debug:
+            print(f"[DEBUG] Logging action: {command} {args}")
+        action = {
+            'timestamp': datetime.now().isoformat(),
+            'command': command,
+            'arguments': args
+        }
+        log_data = {}
+        if os.path.isfile(self.log_file_path):
             try:
-                log_data = json.load(logfile)
+                with open(self.log_file_path, 'r', encoding='utf-8') as file:
+                    log_data = json.load(file)
             except json.JSONDecodeError:
-                log_data = []
-    else:
-        log_data = []
-
-    log_data.append(log_entry)
-
-    with open(log_path, 'w') as logfile:
-        json.dump(log_data, logfile, indent=4)
+                log_data = {'actions': []}
+        else:
+            log_data = {'actions': []}
+        log_data['actions'].append(action)
+        try:
+            with open(self.log_file_path, 'w', encoding='utf-8') as file:
+                json.dump(log_data, file, indent=4, ensure_ascii=False)
+        except IOError as e:
+            print(f"Ошибка записи в лог-файл: {e}")
 ```
 Описание: Записывает действия пользователя в лог-файл log.json с указанием времени выполнения.
 
-#### Извлечение виртуальной файловой системы
+#### Загружает виртуальную файловую систему из архива
 
 ```python
-def extract_tar(tar_path, extract_path, log_path):
-    with tarfile.open(tar_path, 'r') as tar:
-        tar.extractall(path=extract_path)
-    log_action(f'Extracted {tar_path}', log_path)
+    def load_virtual_fs(self):
+        self.root = FileSystemNode('/', is_dir=True)
+        tar_path = os.path.abspath(self.config['virtual_fs_path']).replace('\\', '/')
+        if not os.path.isfile(tar_path):
+            print(f"Архив виртуальной файловой системы '{tar_path}' не найден.")
+            sys.exit(1)
+        try:
+            with tarfile.open(tar_path, 'r') as tar:
+                for member in tar.getmembers():
+                    if member.name == 'virtual_fs' or not member.name.startswith('virtual_fs/'):
+                        continue  # Пропускаем корневую папку
+                    path = member.name.replace('virtual_fs/', '', 1).replace('\\', '/')
+                    is_dir = member.isdir()
+                    self.create_path(path, is_dir)
+        except tarfile.TarError as e:
+            print(f"Ошибка открытия tar-архива: {e}")
+            sys.exit(1)
 ```
-Описание: Извлекает виртуальную файловую систему из tar-архива.
+
+#### Создает директорию или файл по заданному пути в виртуальной файловой системе, разделяя путь на части и итерируя по нему.
+
+```python
+        def create_path(self, path, is_dir):
+        path = path.replace('\\', '/')
+        parts = path.strip('/').split('/')
+        current = self.root
+        for part in parts[:-1]:
+            if part not in current.children:
+                current.children[part] = FileSystemNode(part, is_dir=True)
+            current = current.children[part]
+        last_part = parts[-1]
+        if last_part not in current.children:
+            current.children[last_part] = FileSystemNode(last_part, is_dir=is_dir)
+```
 
 
 ---
